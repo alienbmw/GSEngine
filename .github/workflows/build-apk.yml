@@ -45,7 +45,7 @@ jobs:
 
           # tu codigo, con la misma estructura relativa que en el repo
           mkdir -p android/app/jni/src
-          cp -r editor  android/app/jni/src/editor
+          cp -r GSEditor  android/app/jni/src/GSEditor
           cp -r GSCore  android/app/jni/src/GSCore
 
           # tu codigo usa <SDL2/SDL.h>; este atajo hace que ese include exista
