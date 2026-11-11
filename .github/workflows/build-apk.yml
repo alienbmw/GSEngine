@@ -68,7 +68,7 @@ jobs:
           include $(CLEAR_VARS)
           LOCAL_MODULE := main
           LOCAL_C_INCLUDES := $(LOCAL_PATH)/shim $(LOCAL_PATH)/../SDL/include
-          LOCAL_SRC_FILES := editor/main.cpp
+          LOCAL_SRC_FILES := GSEditor/main.cpp
           LOCAL_CPPFLAGS := -std=c++17
           LOCAL_SHARED_LIBRARIES := SDL2
           LOCAL_LDLIBS := -lGLESv2 -llog -landroid
