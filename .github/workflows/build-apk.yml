@@ -11,7 +11,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'GSEditor/**'
+      - 'editor/**'
       - 'GSCore/**'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
@@ -95,3 +95,4 @@ jobs:
           name: editor-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          
