@@ -1,0 +1,97 @@
+# .github/workflows/build-apk.yml
+# Compila el editor (GSCore + editor/main.cpp + ImGui + SDL2) y genera un APK.
+#
+# Estructura esperada del repo:
+#   GSCore/            core en C
+#   editor/main.cpp    editor (con editor/Imgui/ al lado)
+#   editor/assets/     (opcional) archivos que viajan dentro del APK
+name: Build Editor APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'editor/**'
+      - 'GSCore/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+env:
+  SDL_REF: release-2.30.9      # version de SDL2; si no existe, abajo cae a la rama SDL2
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Descargar SDL2
+        run: |
+          git clone --depth 1 --branch "$SDL_REF" https://github.com/libsdl-org/SDL.git SDL \
+            || git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git SDL
+
+      - name: Armar el proyecto Android
+        run: |
+          cp -r SDL/android-project android
+          ln -s "$GITHUB_WORKSPACE/SDL" android/app/jni/SDL
+
+          # tu codigo, con la misma estructura relativa que en el repo
+          mkdir -p android/app/jni/src
+          cp -r editor  android/app/jni/src/editor
+          cp -r GSCore  android/app/jni/src/GSCore
+
+          # tu codigo usa <SDL2/SDL.h>; este atajo hace que ese include exista
+          mkdir -p android/app/jni/src/shim
+          ln -s ../../SDL/include android/app/jni/src/shim/SDL2
+
+          # archivos opcionales que viajan dentro del APK
+          if [ -d editor/assets ]; then
+            mkdir -p android/app/src/main/assets
+            cp -r editor/assets/. android/app/src/main/assets/
+          fi
+
+          # nombre de la app
+          sed -i 's/>SDL App</>GSEditor</' android/app/src/main/res/values/strings.xml || true
+
+      - name: Escribir Android.mk y Application.mk
+        run: |
+          cat > android/app/jni/src/Android.mk <<'MK'
+          LOCAL_PATH := $(call my-dir)
+          include $(CLEAR_VARS)
+          LOCAL_MODULE := main
+          LOCAL_C_INCLUDES := $(LOCAL_PATH)/shim $(LOCAL_PATH)/../SDL/include
+          LOCAL_SRC_FILES := editor/main.cpp
+          LOCAL_CPPFLAGS := -std=c++17
+          LOCAL_SHARED_LIBRARIES := SDL2
+          LOCAL_LDLIBS := -lGLESv2 -llog -landroid
+          include $(BUILD_SHARED_LIBRARY)
+          MK
+          sed -i 's/^          //' android/app/jni/src/Android.mk
+
+          cat > android/app/jni/Application.mk <<'MK'
+          APP_ABI := arm64-v8a armeabi-v7a
+          APP_PLATFORM := android-21
+          APP_STL := c++_static
+          MK
+          sed -i 's/^          //' android/app/jni/Application.mk
+
+      - name: Compilar APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Subir APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: editor-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
