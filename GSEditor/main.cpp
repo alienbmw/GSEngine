@@ -18,6 +18,8 @@
 #include "../GSCore/input.c"
 #include "../GSCore/collision.c"
 #include "../GSCore/render.c"
+#include "../GSCore/audio.c"
+#include "../GSCore/tilemap.c"
 
 static Engine engine;   // static: vive fuera de la pila (es grande)
 
