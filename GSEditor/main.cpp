@@ -18,10 +18,8 @@
 #include "../GSCore/input.c"
 #include "../GSCore/collision.c"
 #include "../GSCore/render.c"
-#include "../GSCore/audio.c"
-#include "../GSCore/tilemap.c"
 
-static Engine engine;   // el motor 
+static Engine engine;   // static: vive fuera de la pila (es grande)
 
 int main(int, char**) {
     SDL_Init(SDL_INIT_VIDEO);
@@ -37,7 +35,7 @@ int main(int, char**) {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;      // activa el docking
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;      // (paso 2) activa el docking
     ImGui::GetStyle().FontScaleMain = 2.5f;
 
     ImGui::StyleColorsDark();
@@ -47,10 +45,24 @@ int main(int, char**) {
     engine_init(&engine);
     object_create(&engine, "Jugador", OBJ_TYPE_SPRITE, 120, 80, 1);
     object_create(&engine, "Punto", OBJ_TYPE_EMPTY, 40, 40, 0);
+    object_create(&engine, "camera", OBJ_TYPE_EMPTY,40,50,0);
 
     bool run = true;
     int contador = 0;
-    static int sel = 1;   // id del objeto 
+    static int sel = 1;   // id del objeto elegido (vive fuera del bucle)
+
+    // ---- NUEVO (paso 5): pantalla del juego 240x160 dentro del editor ----
+    static Color fb[SCREEN_WIDTH * SCREEN_HEIGHT];                 // lo que dibuja el motor (BGR555)
+    static unsigned char rgba[SCREEN_WIDTH * SCREEN_HEIGHT * 4];   // lo que entiende OpenGL
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);   // pixeles nitidos
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCREEN_WIDTH, SCREEN_HEIGHT, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 
     while (run) {
         SDL_Event e;
@@ -63,18 +75,37 @@ int main(int, char**) {
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
-        // el area donde se acoplan las ventanas
+        // (paso 2) el area donde se acoplan las ventanas
         ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
 
-        // ---- Motor ----
-        ImGui::Begin("engine motor");
-        ImGui::Text("GSEngine");
-        if (ImGui::Button("Pulsame")) contador++;
-        ImGui::Text("Contador: %d", contador);
-        ImGui::Text("FPS: %.1f", io.Framerate);
+        // ---- Escena (NUEVO, paso 5) ----
+        render_scene(&engine, fb);                       // 1) el motor dibuja en fb
+        for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {   // 2) BGR555 -> RGBA8888
+            Color c = fb[i];
+            rgba[i * 4 + 0] = (c & 31) << 3;
+            rgba[i * 4 + 1] = ((c >> 5) & 31) << 3;
+            rgba[i * 4 + 2] = ((c >> 10) & 31) << 3;
+            rgba[i * 4 + 3] = 255;
+        }
+        glBindTexture(GL_TEXTURE_2D, tex);               // 3) subir a la textura
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT,
+                        GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+
+        ImGui::Begin("Escena");                          // 4) mostrarla en un panel
+        ImVec2 libre = ImGui::GetContentRegionAvail();
+        float escala = libre.x / SCREEN_WIDTH;
+        if (SCREEN_HEIGHT * escala > libre.y) escala = libre.y / SCREEN_HEIGHT;
+        if (escala < 1.0f) escala = 1.0f;
+        ImGui::Image((ImTextureID)(intptr_t)tex,
+                     ImVec2(SCREEN_WIDTH * escala, SCREEN_HEIGHT * escala));
+        ImGui::End();
+        
+        // --- files ---
+        ImGui::Begin("files");
+        ImGui::Text("texto");
         ImGui::End();
 
-        // ---- objetos/object----
+        // ---- Jerarquia (paso 4) ----
         ImGui::Begin("Jerarquia");
         for (int i = 0; i < MAX_OBJECTS; i++) {
             Object* o = &engine.objects[i];
@@ -85,7 +116,7 @@ int main(int, char**) {
         }
         ImGui::End();
 
-        // ---- Propiedades/propietie ----
+        // ---- Propiedades (reemplaza al viejo "propietie") ----
         ImGui::Begin("Propiedades");
         Object* obj = object_find(&engine, sel);
         if (obj) {
@@ -99,7 +130,7 @@ int main(int, char**) {
         }
         ImGui::End();
 
-        // ---- Consola/console ----
+        // ---- Consola ----
         ImGui::Begin("console");
         ImGui::Text("console log");
         ImGui::Text("Objetos: %d", (int)objects_count(&engine));
